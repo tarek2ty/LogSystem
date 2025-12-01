@@ -49,7 +49,8 @@
     }
 
     .page {
-      max-width: 1400px;
+      max-width: 1600px;
+      width: 100%;
       margin: 0 auto;
       padding: 32px 22px 48px;
     }
@@ -122,6 +123,11 @@
       box-shadow: 0 0 0 3px rgba(79, 180, 255, 0.2);
     }
 
+    ::placeholder { color: var(--muted); }
+    body[data-theme="dark"] input,
+    body[data-theme="dark"] select,
+    body[data-theme="dark"] option { color: #fff; }
+
     .actions {
       display: flex;
       gap: 10px;
@@ -159,7 +165,7 @@
 
     table {
       width: 100%;
-      min-width: 1200px;
+      min-width: 1600px;
       border-collapse: collapse;
       color: var(--text);
       font-size: 14px;
@@ -252,6 +258,25 @@
       color: var(--text);
     }
 
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .pagination button {
+      min-width: 90px;
+    }
+
+    .pagination select {
+      width: auto;
+      min-width: 120px;
+    }
+
     @media (max-width: 768px) {
       .hero { flex-direction: column; align-items: flex-start; }
       .actions { justify-content: flex-start; }
@@ -341,6 +366,22 @@
         <label><input type="checkbox" data-col="source" checked> Source</label>
         <label><input type="checkbox" data-col="message" checked> Message</label>
       </div>
+      <div class="pagination">
+        <div>
+          <label for="per-page">Rows per page:</label>
+          <select id="per-page">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="ghost" id="prev-page">Previous</button>
+          <button type="button" class="ghost" id="next-page">Next</button>
+          <span id="page-info">Page 1</span>
+        </div>
+      </div>
     </div>
 
     <div class="panel table-card">
@@ -352,12 +393,12 @@
         <table>
           <colgroup>
             <col class="col-datetime" style="min-width:170px; width:12%;">
-            <col class="col-type" style="min-width:110px; width:10%;">
-            <col class="col-collector" style="min-width:150px; width:14%;">
-            <col class="col-level" style="min-width:90px; width:8%;">
-            <col class="col-pool" style="min-width:110px; width:10%;">
-            <col class="col-source" style="min-width:150px; width:14%;">
-            <col class="col-message" style="min-width:300px; width:32%;">
+            <col class="col-type" style="min-width:120px; width:10%;">
+            <col class="col-collector" style="min-width:180px; width:14%;">
+            <col class="col-level" style="min-width:110px; width:8%;">
+            <col class="col-pool" style="min-width:130px; width:9%;">
+            <col class="col-source" style="min-width:200px; width:14%;">
+            <col class="col-message" style="min-width:500px; width:33%;">
           </colgroup>
           <thead>
             <tr>
@@ -378,7 +419,7 @@
 
   <script>
     const baseLogs = {{ logs|tojson }};
-    const state = { sortBy: 'datetime', direction: 'desc' };
+    const state = { sortBy: 'datetime', direction: 'desc', page: 1, perPage: 25, lastLogs: baseLogs };
     const visibleCols = { type: true, collector: true, level: true, pool: true, source: true, message: true };
 
     const els = {
@@ -389,6 +430,12 @@
       sortLabel: document.getElementById('sort-label'),
       themeToggle: document.getElementById('theme-toggle'),
       columnToggles: document.getElementById('column-toggles'),
+      pagination: {
+        perPage: document.getElementById('per-page'),
+        prev: document.getElementById('prev-page'),
+        next: document.getElementById('next-page'),
+        info: document.getElementById('page-info'),
+      },
       controls: {
         search: document.getElementById('search'),
         type: document.getElementById('type'),
@@ -443,22 +490,36 @@
       try {
         const res = await fetch(`/api/logs?${buildQuery()}`);
         const data = await res.json();
-        renderTable(data.logs || []);
-        els.matchCount.textContent = data.count ?? data.logs.length;
+        state.lastLogs = data.logs || [];
+        els.matchCount.textContent = data.count ?? state.lastLogs.length;
+        renderTable(state.lastLogs);
       } catch (err) {
         console.error('Failed to load logs, using cached data', err);
-        renderTable(baseLogs);
+        state.lastLogs = baseLogs;
         els.matchCount.textContent = baseLogs.length;
+        renderTable(state.lastLogs);
       }
     }
 
+    function paginate(logs) {
+      const perPage = Number(els.pagination.perPage.value) || state.perPage;
+      state.perPage = perPage;
+      const total = logs.length;
+      const totalPages = Math.max(1, Math.ceil(total / perPage));
+      if (state.page > totalPages) state.page = totalPages;
+      const start = (state.page - 1) * perPage;
+      return { slice: logs.slice(start, start + perPage), total, totalPages };
+    }
+
     function renderTable(logs) {
-      if (!logs.length) {
+      const { slice, total, totalPages } = paginate(logs);
+      if (!slice.length) {
         els.logBody.innerHTML = `<tr><td colspan="7" class="empty">No logs match the current filters.</td></tr>`;
+        renderPagination(total, totalPages);
         return;
       }
 
-      const rows = logs.map(log => {
+      const rows = slice.map(log => {
         const dateTime = (log.date && log.time) ? `${log.date} ${log.time}` : 'N/A';
         const levelClass = (log.level || '').toLowerCase() === 'error' ? 'pill error' : 'pill info';
         const message = log.message || '';
@@ -476,7 +537,14 @@
       }).join('');
       els.logBody.innerHTML = rows;
       updateSortLabel();
+      renderPagination(total, totalPages);
       applyColumnVisibility();
+    }
+
+    function renderPagination(total, totalPages) {
+      els.pagination.info.textContent = `Page ${state.page} / ${totalPages} · ${total} logs`;
+      els.pagination.prev.disabled = state.page <= 1;
+      els.pagination.next.disabled = state.page >= totalPages;
     }
 
     function updateSortLabel() {
@@ -496,6 +564,7 @@
       Object.values(els.controls).forEach(input => { input.value = ''; });
       state.sortBy = 'datetime';
       state.direction = 'desc';
+      state.page = 1;
       refresh();
     }
 
@@ -538,6 +607,27 @@
       }
     });
 
+    els.pagination.prev.addEventListener('click', () => {
+      if (state.page > 1) {
+        state.page -= 1;
+        renderTable(state.lastLogs);
+      }
+    });
+
+    els.pagination.next.addEventListener('click', () => {
+      const perPage = Number(els.pagination.perPage.value) || state.perPage;
+      const totalPages = Math.max(1, Math.ceil(state.lastLogs.length / perPage));
+      if (state.page < totalPages) {
+        state.page += 1;
+        renderTable(state.lastLogs);
+      }
+    });
+
+    els.pagination.perPage.addEventListener('change', () => {
+      state.page = 1;
+      renderTable(state.lastLogs);
+    });
+
     function applyTheme(theme) {
       const root = document.documentElement;
       root.setAttribute('data-theme', theme);
@@ -560,7 +650,8 @@
     document.addEventListener('DOMContentLoaded', () => {
       initTheme();
       populateFilters(baseLogs);
-      renderTable(baseLogs);
+      state.lastLogs = baseLogs;
+      renderTable(state.lastLogs);
       refresh();
     });
   </script>
