@@ -7,28 +7,45 @@
   <style>
     :root {
       --bg: #0c1018;
-      --panel: rgba(17, 25, 40, 0.8);
+      --panel: rgba(17, 25, 40, 0.9);
+      --panel-border: rgba(255, 255, 255, 0.08);
       --accent: #2ae0c8;
       --accent-2: #4fb4ff;
       --text: #ecf0ff;
-      --muted: #9db2c7;
+      --muted: #b5c4d6;
       --danger: #ff6b8a;
-      --warning: #ffc361;
       --shadow: 0 15px 40px rgba(0, 0, 0, 0.35);
       --radius: 14px;
+      --input-bg: rgba(255, 255, 255, 0.08);
+      --btn-ghost: rgba(255, 255, 255, 0.12);
+      --table-alt: rgba(255, 255, 255, 0.04);
+    }
+
+    [data-theme="light"] {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --panel-border: #dbe3f0;
+      --accent: #0072ff;
+      --accent-2: #00c6ff;
+      --text: #0f172a;
+      --muted: #4b5563;
+      --danger: #d62839;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      --radius: 14px;
+      --input-bg: #f2f5fb;
+      --btn-ghost: #e6edf7;
+      --table-alt: #f7f9fc;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      font-family: "Segoe UI", "Avenir Next", "Gill Sans", sans-serif;
-      background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.18), transparent 30%),
-                  radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.18), transparent 28%),
-                  radial-gradient(circle at 50% 80%, rgba(255, 107, 138, 0.14), transparent 30%),
-                  var(--bg);
+      font-family: "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      transition: background 0.2s ease, color 0.2s ease;
     }
 
     .page {
@@ -43,6 +60,7 @@
       align-items: center;
       gap: 18px;
       margin-bottom: 22px;
+      flex-wrap: wrap;
     }
 
     .title {
@@ -62,8 +80,8 @@
       align-items: center;
       gap: 8px;
       padding: 10px 14px;
-      background: linear-gradient(120deg, rgba(42, 224, 200, 0.15), rgba(79, 180, 255, 0.12));
-      border: 1px solid rgba(42, 224, 200, 0.3);
+      background: linear-gradient(120deg, rgba(42, 224, 200, 0.2), rgba(79, 180, 255, 0.16));
+      border: 1px solid rgba(42, 224, 200, 0.35);
       border-radius: 999px;
       color: var(--text);
       font-weight: 600;
@@ -74,12 +92,10 @@
 
     .panel {
       background: var(--panel);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--panel-border);
       border-radius: var(--radius);
       padding: 18px 18px 14px;
       box-shadow: var(--shadow);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
       margin-bottom: 16px;
     }
 
@@ -103,16 +119,16 @@
       width: 100%;
       padding: 10px 12px;
       border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--panel-border);
+      background: var(--input-bg);
       color: var(--text);
       outline: none;
       transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
     }
 
     input:focus, select:focus {
-      border-color: rgba(79, 180, 255, 0.8);
-      box-shadow: 0 0 0 3px rgba(79, 180, 255, 0.15);
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 3px rgba(79, 180, 255, 0.2);
     }
 
     .actions {
@@ -133,41 +149,34 @@
     }
 
     .primary {
-      background: linear-gradient(120deg, #2ae0c8, #4fb4ff);
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
       color: #041018;
-      box-shadow: 0 10px 20px rgba(42, 224, 200, 0.35);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+      border: 1px solid var(--accent);
     }
 
     .ghost {
-      background: rgba(255, 255, 255, 0.08);
+      background: var(--btn-ghost);
       color: var(--text);
+      border: 1px solid var(--panel-border);
     }
 
-    .primary:hover, .ghost:hover {
-      transform: translateY(-1px);
-    }
+    .primary:hover, .ghost:hover { transform: translateY(-1px); }
 
-    .table-card {
-      overflow: hidden;
-    }
+    .table-card { overflow: hidden; }
+    .table-container { overflow-x: auto; }
 
     table {
       width: 100%;
       border-collapse: collapse;
       color: var(--text);
       font-size: 14px;
+      table-layout: fixed;
     }
 
-    thead {
-      background: rgba(255, 255, 255, 0.04);
-    }
+    thead { background: var(--table-alt); }
 
-    th, td {
-      padding: 12px 10px;
-      text-align: left;
-      vertical-align: top;
-    }
-
+    th, td { padding: 12px 10px; text-align: left; vertical-align: top; }
     th {
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -175,15 +184,11 @@
       color: var(--muted);
       cursor: pointer;
       user-select: none;
+      white-space: nowrap;
     }
 
-    tr:nth-child(even) td {
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    tr:hover td {
-      background: rgba(79, 180, 255, 0.05);
-    }
+    tr:nth-child(even) td { background: var(--table-alt); }
+    tr:hover td { background: rgba(79, 180, 255, 0.08); }
 
     .pill {
       display: inline-flex;
@@ -193,20 +198,24 @@
       font-weight: 700;
       font-size: 12px;
       letter-spacing: 0.01em;
+      border: 1px solid transparent;
     }
-
-    .pill.info { background: rgba(42, 224, 200, 0.16); color: #7ff2dd; }
-    .pill.error { background: rgba(255, 107, 138, 0.16); color: #ff8fa8; }
+    .pill.info { background: rgba(42, 224, 200, 0.16); color: #0c8b76; }
+    .pill.error { background: rgba(255, 107, 138, 0.18); color: #a90b2b; }
+    [data-theme="dark"] .pill.info { color: #7ff2dd; }
+    [data-theme="dark"] .pill.error { color: #ff8fa8; }
 
     .muted { color: var(--muted); font-size: 13px; }
-
     .nowrap { white-space: nowrap; }
-
-    .sort-indicator {
-      margin-left: 6px;
-      color: var(--muted);
-      opacity: 0.7;
+    .message {
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      max-width: 520px;
+      font-family: "Consolas", "SFMono-Regular", monospace;
     }
+
+    .sort-indicator { margin-left: 6px; color: var(--muted); opacity: 0.8; }
 
     .table-header {
       display: flex;
@@ -215,6 +224,8 @@
       margin-bottom: 10px;
       color: var(--muted);
       font-size: 13px;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .chip {
@@ -223,14 +234,12 @@
       gap: 6px;
       padding: 6px 10px;
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.08);
+      background: var(--btn-ghost);
+      border: 1px solid var(--panel-border);
     }
 
-    .empty {
-      text-align: center;
-      padding: 32px 12px;
-      color: var(--muted);
-    }
+    .empty { text-align: center; padding: 32px 12px; color: var(--muted); }
+    #theme-toggle { min-width: 140px; }
 
     @media (max-width: 768px) {
       th:nth-child(5), td:nth-child(5), th:nth-child(6), td:nth-child(6) { display: none; }
@@ -246,9 +255,12 @@
         <h1 class="title">Network Log Console</h1>
         <p class="subtitle">Filter, search, and sort collector activity in real time.</p>
       </div>
-      <div class="badge">
-        <span>Live view</span>
-        <span id="log-count">0</span>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button id="theme-toggle" class="ghost" type="button">Toggle theme</button>
+        <div class="badge">
+          <span>Live view</span>
+          <span id="log-count">0</span>
+        </div>
       </div>
     </div>
 
@@ -315,29 +327,29 @@
 
     <div class="panel table-card">
       <div class="table-header">
-        <span class="chip">Sorted by <strong id="sort-label">Date &amp; Time ↓</strong></span>
+        <span class="chip">Sorted by <strong id="sort-label">Date &amp; Time v</strong></span>
         <span class="chip">Matching <strong id="match-count">0</strong> logs</span>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th data-sort="datetime">Date &amp; Time <span class="sort-indicator">⇅</span></th>
-            <th data-sort="type">Type <span class="sort-indicator">⇅</span></th>
-            <th data-sort="collector">Collector <span class="sort-indicator">⇅</span></th>
-            <th data-sort="level">Level <span class="sort-indicator">⇅</span></th>
-            <th data-sort="pool">Pool <span class="sort-indicator">⇅</span></th>
-            <th data-sort="source">Source <span class="sort-indicator">⇅</span></th>
-            <th>Message</th>
-          </tr>
-        </thead>
-        <tbody id="log-body">
-        </tbody>
-      </table>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="datetime">Date &amp; Time <span class="sort-indicator">&#8597;</span></th>
+              <th data-sort="type">Type <span class="sort-indicator">&#8597;</span></th>
+              <th data-sort="collector">Collector <span class="sort-indicator">&#8597;</span></th>
+              <th data-sort="level">Level <span class="sort-indicator">&#8597;</span></th>
+              <th data-sort="pool">Pool <span class="sort-indicator">&#8597;</span></th>
+              <th data-sort="source">Source <span class="sort-indicator">&#8597;</span></th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="log-body"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
   <script>
-    /* global logs */
     const baseLogs = {{ logs|tojson }};
     const state = { sortBy: 'datetime', direction: 'desc' };
 
@@ -347,6 +359,7 @@
       logCount: document.getElementById('log-count'),
       matchCount: document.getElementById('match-count'),
       sortLabel: document.getElementById('sort-label'),
+      themeToggle: document.getElementById('theme-toggle'),
       controls: {
         search: document.getElementById('search'),
         type: document.getElementById('type'),
@@ -417,8 +430,9 @@
       }
 
       const rows = logs.map(log => {
-        const dateTime = log.date && log.time ? `${log.date} ${log.time}` : '—';
+        const dateTime = (log.date && log.time) ? `${log.date} ${log.time}` : 'N/A';
         const levelClass = (log.level || '').toLowerCase() === 'error' ? 'pill error' : 'pill info';
+        const message = log.message || '';
         return `
           <tr>
             <td class="nowrap">${dateTime}</td>
@@ -427,7 +441,7 @@
             <td><span class="${levelClass}">${log.level || ''}</span></td>
             <td class="muted">${log.pool || ''}</td>
             <td class="muted">${log.source || ''}</td>
-            <td>${log.message || ''}</td>
+            <td class="message" title="${message.replace(/"/g, '&quot;')}">${message}</td>
           </tr>
         `;
       }).join('');
@@ -444,8 +458,8 @@
         pool: 'Pool',
         source: 'Source'
       };
-      const dirSymbol = state.direction === 'asc' ? '↑' : '↓';
-      els.sortLabel.innerHTML = `${labels[state.sortBy] || 'Date & Time'} ${dirSymbol}`;
+      const dirSymbol = state.direction === 'asc' ? '^' : 'v';
+      els.sortLabel.textContent = `${labels[state.sortBy] || 'Date & Time'} ${dirSymbol}`;
     }
 
     function resetFilters() {
@@ -478,7 +492,27 @@
       resetFilters();
     });
 
+    function applyTheme(theme) {
+      const root = document.documentElement;
+      root.setAttribute('data-theme', theme);
+      localStorage.setItem('log-theme', theme);
+      els.themeToggle.textContent = theme === 'light' ? 'Switch to dark' : 'Switch to light';
+    }
+
+    function initTheme() {
+      const saved = localStorage.getItem('log-theme');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const initial = saved || (prefersDark ? 'dark' : 'light');
+      applyTheme(initial);
+    }
+
+    els.themeToggle.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
+      initTheme();
       populateFilters(baseLogs);
       renderTable(baseLogs);
       refresh();
@@ -486,3 +520,4 @@
   </script>
 </body>
 </html>
+

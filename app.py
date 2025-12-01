@@ -1,26 +1,29 @@
 from datetime import datetime
+from glob import glob
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from flask import Flask, jsonify, render_template, request
-from glob import glob
 
-LOG_FILES = [Path(p) for p in glob("/app1/logs/dc-*/application*")]
+LOG_GLOB_PATTERN = "/app1/logs/dc-*/application*"
+FALLBACK_LOG = Path("input") / "sample.log"
 LOG_SEPARATOR = "$$$"
 
 app = Flask(__name__)
 
 
+def collect_log_files() -> List[Path]:
+    files = [Path(p) for p in glob(LOG_GLOB_PATTERN) if Path(p).exists()]
+    if not files and FALLBACK_LOG.exists():
+        files = [FALLBACK_LOG]
+    return files
+
+
 def parse_log_block(block: str) -> Optional[Dict[str, str]]:
-    """
-    Parse a raw log block into structured fields.
-    Returns None when the block does not match the expected layout.
-    """
     cleaned = block.strip()
     if not cleaned:
         return None
 
-    # Split by closing bracket to separate the first five fields.
     parts = [segment.replace("[", "").strip() for segment in cleaned.split("]") if segment.strip()]
     if len(parts) < 6:
         return None
@@ -50,7 +53,6 @@ def extract_date_time_and_message(remainder: str) -> Tuple[str, str, str]:
         return "", "", remainder.strip()
 
     date, time = segments[0], segments[1]
-    # Strip date + time and the spaces separating them to keep the full log text intact.
     message = remainder[remainder.find(time) + len(time):].strip()
     return date, time, message
 
@@ -64,18 +66,24 @@ def build_datetime(date_value: str, time_value: str) -> Optional[datetime]:
         return None
 
 
-def read_logs(LOG_FILE) -> List[Dict[str, str]]:
-    if not LOG_FILE.exists():
+def read_logs_from_file(path: Path) -> List[Dict[str, str]]:
+    if not path.exists():
         return []
-
-    raw_content = LOG_FILE.read_text(encoding="utf-8")
+    raw_content = path.read_text(encoding="utf-8", errors="replace")
     blocks = raw_content.split(LOG_SEPARATOR)
-    parsed = []
+    parsed: List[Dict[str, str]] = []
     for block in blocks:
         entry = parse_log_block(block)
         if entry:
             parsed.append(entry)
     return parsed
+
+
+def load_all_logs() -> List[Dict[str, str]]:
+    logs: List[Dict[str, str]] = []
+    for log_file in collect_log_files():
+        logs.extend(read_logs_from_file(log_file))
+    return logs
 
 
 def apply_filters(logs: List[Dict[str, str]], args) -> List[Dict[str, str]]:
@@ -98,7 +106,8 @@ def apply_filters(logs: List[Dict[str, str]], args) -> List[Dict[str, str]]:
 
     filtered: List[Dict[str, str]] = []
     for log in logs:
-        if search_term and search_term not in " ".join(log.values()).lower():
+        search_haystack = " ".join(str(v or "") for v in log.values()).lower()
+        if search_term and search_term not in search_haystack:
             continue
         if type_filter and log.get("type", "").lower() != type_filter:
             continue
@@ -141,22 +150,19 @@ def apply_sort(logs: List[Dict[str, str]], sort_by: str, direction: str) -> List
 
 @app.route("/")
 def index():
-    logs = []
-    for log_file in LOG_FILES:
-        logs.extend(read_logs(log_file))
+    logs = load_all_logs()
     return render_template("index.html", logs=logs)
 
 
 @app.route("/api/logs")
 def api_logs():
-    logs = []
-    for log_file in LOG_FILES:
-        logs.extend(read_logs(log_file))
+    logs = load_all_logs()
     logs = apply_filters(logs, request.args)
     logs = apply_sort(logs, request.args.get("sort_by", "datetime"), request.args.get("direction", "desc"))
     return jsonify({"count": len(logs), "logs": logs})
 
 
 if __name__ == "__main__":
-    print(LOG_FILES)
+    print("Scanning logs:", collect_log_files())
     app.run(host="0.0.0.0", port=5000, debug=True)
+
