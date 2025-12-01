@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log Console</title>
+  <style>
+    :root {
+      --bg: #0c1018;
+      --panel: rgba(17, 25, 40, 0.8);
+      --accent: #2ae0c8;
+      --accent-2: #4fb4ff;
+      --text: #ecf0ff;
+      --muted: #9db2c7;
+      --danger: #ff6b8a;
+      --warning: #ffc361;
+      --shadow: 0 15px 40px rgba(0, 0, 0, 0.35);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Avenir Next", "Gill Sans", sans-serif;
+      background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.18), transparent 30%),
+                  radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.18), transparent 28%),
+                  radial-gradient(circle at 50% 80%, rgba(255, 107, 138, 0.14), transparent 30%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 22px 48px;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+
+    .title {
+      font-size: 28px;
+      letter-spacing: -0.02em;
+      margin: 0;
+    }
+
+    .subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: linear-gradient(120deg, rgba(42, 224, 200, 0.15), rgba(79, 180, 255, 0.12));
+      border: 1px solid rgba(42, 224, 200, 0.3);
+      border-radius: 999px;
+      color: var(--text);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius);
+      padding: 18px 18px 14px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      margin-bottom: 16px;
+    }
+
+    .filters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input, select, button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      outline: none;
+      transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+    }
+
+    input:focus, select:focus {
+      border-color: rgba(79, 180, 255, 0.8);
+      box-shadow: 0 0 0 3px rgba(79, 180, 255, 0.15);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      cursor: pointer;
+      width: auto;
+      min-width: 120px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      border: none;
+    }
+
+    .primary {
+      background: linear-gradient(120deg, #2ae0c8, #4fb4ff);
+      color: #041018;
+      box-shadow: 0 10px 20px rgba(42, 224, 200, 0.35);
+    }
+
+    .ghost {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+
+    .primary:hover, .ghost:hover {
+      transform: translateY(-1px);
+    }
+
+    .table-card {
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    thead {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    th, td {
+      padding: 12px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    tr:nth-child(even) td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    tr:hover td {
+      background: rgba(79, 180, 255, 0.05);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.01em;
+    }
+
+    .pill.info { background: rgba(42, 224, 200, 0.16); color: #7ff2dd; }
+    .pill.error { background: rgba(255, 107, 138, 0.16); color: #ff8fa8; }
+
+    .muted { color: var(--muted); font-size: 13px; }
+
+    .nowrap { white-space: nowrap; }
+
+    .sort-indicator {
+      margin-left: 6px;
+      color: var(--muted);
+      opacity: 0.7;
+    }
+
+    .table-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 32px 12px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 768px) {
+      th:nth-child(5), td:nth-child(5), th:nth-child(6), td:nth-child(6) { display: none; }
+      .hero { flex-direction: column; align-items: flex-start; }
+      .actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <div>
+        <h1 class="title">Network Log Console</h1>
+        <p class="subtitle">Filter, search, and sort collector activity in real time.</p>
+      </div>
+      <div class="badge">
+        <span>Live view</span>
+        <span id="log-count">0</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <form id="filter-form">
+        <div class="filters-grid">
+          <div class="field">
+            <label for="search">Search (collector, type, message)</label>
+            <input id="search" name="search" type="text" placeholder="e.g. SNMP, npm-convergence-demo, error...">
+          </div>
+          <div class="field">
+            <label for="type">Type</label>
+            <select id="type" name="type">
+              <option value="">Any</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="collector">Collector</label>
+            <select id="collector" name="collector">
+              <option value="">Any</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="level">Level</label>
+            <select id="level" name="level">
+              <option value="">Any</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="pool">Pool</label>
+            <select id="pool" name="pool">
+              <option value="">Any</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="source">Source</label>
+            <select id="source" name="source">
+              <option value="">Any</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="start_date">Start Date</label>
+            <input id="start_date" name="start_date" type="date">
+          </div>
+          <div class="field">
+            <label for="end_date">End Date</label>
+            <input id="end_date" name="end_date" type="date">
+          </div>
+          <div class="field">
+            <label for="start_time">Start Time</label>
+            <input id="start_time" name="start_time" type="time" step="60">
+          </div>
+          <div class="field">
+            <label for="end_time">End Time</label>
+            <input id="end_time" name="end_time" type="time" step="60">
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="ghost" id="reset-filters">Reset</button>
+          <button type="submit" class="primary" id="apply-filters">Apply</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel table-card">
+      <div class="table-header">
+        <span class="chip">Sorted by <strong id="sort-label">Date &amp; Time ↓</strong></span>
+        <span class="chip">Matching <strong id="match-count">0</strong> logs</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="datetime">Date &amp; Time <span class="sort-indicator">⇅</span></th>
+            <th data-sort="type">Type <span class="sort-indicator">⇅</span></th>
+            <th data-sort="collector">Collector <span class="sort-indicator">⇅</span></th>
+            <th data-sort="level">Level <span class="sort-indicator">⇅</span></th>
+            <th data-sort="pool">Pool <span class="sort-indicator">⇅</span></th>
+            <th data-sort="source">Source <span class="sort-indicator">⇅</span></th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody id="log-body">
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    /* global logs */
+    const baseLogs = {{ logs|tojson }};
+    const state = { sortBy: 'datetime', direction: 'desc' };
+
+    const els = {
+      form: document.getElementById('filter-form'),
+      logBody: document.getElementById('log-body'),
+      logCount: document.getElementById('log-count'),
+      matchCount: document.getElementById('match-count'),
+      sortLabel: document.getElementById('sort-label'),
+      controls: {
+        search: document.getElementById('search'),
+        type: document.getElementById('type'),
+        collector: document.getElementById('collector'),
+        level: document.getElementById('level'),
+        pool: document.getElementById('pool'),
+        source: document.getElementById('source'),
+        start_date: document.getElementById('start_date'),
+        end_date: document.getElementById('end_date'),
+        start_time: document.getElementById('start_time'),
+        end_time: document.getElementById('end_time'),
+      }
+    };
+
+    function uniqueValues(logs, key) {
+      return Array.from(new Set(logs.map(l => l[key]).filter(Boolean))).sort();
+    }
+
+    function populateSelect(el, values) {
+      const existing = new Set(Array.from(el.options).map(o => o.value));
+      values.forEach(v => {
+        if (!existing.has(v)) {
+          const opt = document.createElement('option');
+          opt.value = v;
+          opt.textContent = v;
+          el.appendChild(opt);
+        }
+      });
+    }
+
+    function populateFilters(logs) {
+      populateSelect(els.controls.type, uniqueValues(logs, 'type'));
+      populateSelect(els.controls.collector, uniqueValues(logs, 'collector'));
+      populateSelect(els.controls.level, uniqueValues(logs, 'level'));
+      populateSelect(els.controls.pool, uniqueValues(logs, 'pool'));
+      populateSelect(els.controls.source, uniqueValues(logs, 'source'));
+      els.logCount.textContent = logs.length;
+    }
+
+    function buildQuery() {
+      const params = new URLSearchParams();
+      Object.entries(els.controls).forEach(([key, input]) => {
+        const value = input.value.trim();
+        if (value) params.set(key, value);
+      });
+      params.set('sort_by', state.sortBy);
+      params.set('direction', state.direction);
+      return params.toString();
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch(`/api/logs?${buildQuery()}`);
+        const data = await res.json();
+        renderTable(data.logs || []);
+        els.matchCount.textContent = data.count ?? data.logs.length;
+      } catch (err) {
+        console.error('Failed to load logs, using cached data', err);
+        renderTable(baseLogs);
+        els.matchCount.textContent = baseLogs.length;
+      }
+    }
+
+    function renderTable(logs) {
+      if (!logs.length) {
+        els.logBody.innerHTML = `<tr><td colspan="7" class="empty">No logs match the current filters.</td></tr>`;
+        return;
+      }
+
+      const rows = logs.map(log => {
+        const dateTime = log.date && log.time ? `${log.date} ${log.time}` : '—';
+        const levelClass = (log.level || '').toLowerCase() === 'error' ? 'pill error' : 'pill info';
+        return `
+          <tr>
+            <td class="nowrap">${dateTime}</td>
+            <td><span class="pill info">${log.type || ''}</span></td>
+            <td>${log.collector || ''}</td>
+            <td><span class="${levelClass}">${log.level || ''}</span></td>
+            <td class="muted">${log.pool || ''}</td>
+            <td class="muted">${log.source || ''}</td>
+            <td>${log.message || ''}</td>
+          </tr>
+        `;
+      }).join('');
+      els.logBody.innerHTML = rows;
+      updateSortLabel();
+    }
+
+    function updateSortLabel() {
+      const labels = {
+        datetime: 'Date & Time',
+        type: 'Type',
+        collector: 'Collector',
+        level: 'Level',
+        pool: 'Pool',
+        source: 'Source'
+      };
+      const dirSymbol = state.direction === 'asc' ? '↑' : '↓';
+      els.sortLabel.innerHTML = `${labels[state.sortBy] || 'Date & Time'} ${dirSymbol}`;
+    }
+
+    function resetFilters() {
+      Object.values(els.controls).forEach(input => { input.value = ''; });
+      state.sortBy = 'datetime';
+      state.direction = 'desc';
+      refresh();
+    }
+
+    document.querySelectorAll('th[data-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.getAttribute('data-sort');
+        if (state.sortBy === field) {
+          state.direction = state.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.sortBy = field;
+          state.direction = 'asc';
+        }
+        refresh();
+      });
+    });
+
+    els.form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      refresh();
+    });
+
+    document.getElementById('reset-filters').addEventListener('click', (e) => {
+      e.preventDefault();
+      resetFilters();
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      populateFilters(baseLogs);
+      renderTable(baseLogs);
+      refresh();
+    });
+  </script>
+</body>
+</html>
