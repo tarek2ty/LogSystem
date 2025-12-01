@@ -49,7 +49,7 @@
     }
 
     .page {
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 32px 22px 48px;
     }
@@ -63,17 +63,8 @@
       flex-wrap: wrap;
     }
 
-    .title {
-      font-size: 28px;
-      letter-spacing: -0.02em;
-      margin: 0;
-    }
-
-    .subtitle {
-      margin: 4px 0 0;
-      color: var(--muted);
-      font-size: 15px;
-    }
+    .title { font-size: 28px; letter-spacing: -0.02em; margin: 0; }
+    .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
 
     .badge {
       display: inline-flex;
@@ -168,10 +159,10 @@
 
     table {
       width: 100%;
+      min-width: 1200px;
       border-collapse: collapse;
       color: var(--text);
       font-size: 14px;
-      table-layout: fixed;
     }
 
     thead { background: var(--table-alt); }
@@ -211,7 +202,7 @@
       white-space: normal;
       word-break: break-word;
       overflow-wrap: anywhere;
-      max-width: 520px;
+      max-width: 100%;
       font-family: "Consolas", "SFMono-Regular", monospace;
     }
 
@@ -241,8 +232,27 @@
     .empty { text-align: center; padding: 32px 12px; color: var(--muted); }
     #theme-toggle { min-width: 140px; }
 
+    .column-toggles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .column-toggles label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: var(--btn-ghost);
+      border: 1px solid var(--panel-border);
+      cursor: pointer;
+      color: var(--text);
+    }
+
     @media (max-width: 768px) {
-      th:nth-child(5), td:nth-child(5), th:nth-child(6), td:nth-child(6) { display: none; }
       .hero { flex-direction: column; align-items: flex-start; }
       .actions { justify-content: flex-start; }
     }
@@ -323,6 +333,14 @@
           <button type="submit" class="primary" id="apply-filters">Apply</button>
         </div>
       </form>
+      <div class="column-toggles" id="column-toggles">
+        <label><input type="checkbox" data-col="type" checked> Type</label>
+        <label><input type="checkbox" data-col="collector" checked> Collector</label>
+        <label><input type="checkbox" data-col="level" checked> Level</label>
+        <label><input type="checkbox" data-col="pool" checked> Pool</label>
+        <label><input type="checkbox" data-col="source" checked> Source</label>
+        <label><input type="checkbox" data-col="message" checked> Message</label>
+      </div>
     </div>
 
     <div class="panel table-card">
@@ -332,15 +350,24 @@
       </div>
       <div class="table-container">
         <table>
+          <colgroup>
+            <col class="col-datetime" style="min-width:170px; width:12%;">
+            <col class="col-type" style="min-width:110px; width:10%;">
+            <col class="col-collector" style="min-width:150px; width:14%;">
+            <col class="col-level" style="min-width:90px; width:8%;">
+            <col class="col-pool" style="min-width:110px; width:10%;">
+            <col class="col-source" style="min-width:150px; width:14%;">
+            <col class="col-message" style="min-width:300px; width:32%;">
+          </colgroup>
           <thead>
             <tr>
-              <th data-sort="datetime">Date &amp; Time <span class="sort-indicator">&#8597;</span></th>
-              <th data-sort="type">Type <span class="sort-indicator">&#8597;</span></th>
-              <th data-sort="collector">Collector <span class="sort-indicator">&#8597;</span></th>
-              <th data-sort="level">Level <span class="sort-indicator">&#8597;</span></th>
-              <th data-sort="pool">Pool <span class="sort-indicator">&#8597;</span></th>
-              <th data-sort="source">Source <span class="sort-indicator">&#8597;</span></th>
-              <th>Message</th>
+              <th class="col-datetime" data-sort="datetime">Date &amp; Time <span class="sort-indicator">&#8597;</span></th>
+              <th class="col-type" data-sort="type">Type <span class="sort-indicator">&#8597;</span></th>
+              <th class="col-collector" data-sort="collector">Collector <span class="sort-indicator">&#8597;</span></th>
+              <th class="col-level" data-sort="level">Level <span class="sort-indicator">&#8597;</span></th>
+              <th class="col-pool" data-sort="pool">Pool <span class="sort-indicator">&#8597;</span></th>
+              <th class="col-source" data-sort="source">Source <span class="sort-indicator">&#8597;</span></th>
+              <th class="col-message">Message</th>
             </tr>
           </thead>
           <tbody id="log-body"></tbody>
@@ -352,6 +379,7 @@
   <script>
     const baseLogs = {{ logs|tojson }};
     const state = { sortBy: 'datetime', direction: 'desc' };
+    const visibleCols = { type: true, collector: true, level: true, pool: true, source: true, message: true };
 
     const els = {
       form: document.getElementById('filter-form'),
@@ -360,6 +388,7 @@
       matchCount: document.getElementById('match-count'),
       sortLabel: document.getElementById('sort-label'),
       themeToggle: document.getElementById('theme-toggle'),
+      columnToggles: document.getElementById('column-toggles'),
       controls: {
         search: document.getElementById('search'),
         type: document.getElementById('type'),
@@ -435,18 +464,19 @@
         const message = log.message || '';
         return `
           <tr>
-            <td class="nowrap">${dateTime}</td>
-            <td><span class="pill info">${log.type || ''}</span></td>
-            <td>${log.collector || ''}</td>
-            <td><span class="${levelClass}">${log.level || ''}</span></td>
-            <td class="muted">${log.pool || ''}</td>
-            <td class="muted">${log.source || ''}</td>
-            <td class="message" title="${message.replace(/"/g, '&quot;')}">${message}</td>
+            <td class="nowrap col-datetime">${dateTime}</td>
+            <td class="col-type"><span class="pill info">${log.type || ''}</span></td>
+            <td class="col-collector">${log.collector || ''}</td>
+            <td class="col-level"><span class="${levelClass}">${log.level || ''}</span></td>
+            <td class="col-pool muted">${log.pool || ''}</td>
+            <td class="col-source muted">${log.source || ''}</td>
+            <td class="col-message message" title="${message.replace(/"/g, '&quot;')}">${message}</td>
           </tr>
         `;
       }).join('');
       els.logBody.innerHTML = rows;
       updateSortLabel();
+      applyColumnVisibility();
     }
 
     function updateSortLabel() {
@@ -467,6 +497,15 @@
       state.sortBy = 'datetime';
       state.direction = 'desc';
       refresh();
+    }
+
+    function applyColumnVisibility() {
+      Object.entries(visibleCols).forEach(([col, isVisible]) => {
+        const display = isVisible ? '' : 'none';
+        document.querySelectorAll(`.col-${col}`).forEach(cell => {
+          cell.style.display = display;
+        });
+      });
     }
 
     document.querySelectorAll('th[data-sort]').forEach(th => {
@@ -490,6 +529,13 @@
     document.getElementById('reset-filters').addEventListener('click', (e) => {
       e.preventDefault();
       resetFilters();
+    });
+
+    els.columnToggles.addEventListener('change', (e) => {
+      if (e.target && e.target.dataset.col) {
+        visibleCols[e.target.dataset.col] = e.target.checked;
+        applyColumnVisibility();
+      }
     });
 
     function applyTheme(theme) {
