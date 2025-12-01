@@ -1,25 +1,128 @@
 from datetime import datetime
+from fnmatch import fnmatch
 from glob import glob
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from flask import Flask, jsonify, render_template, request
+import paramiko
 
-LOG_GLOB_PATTERN = "/app1/logs/dc-*/application*"
+import configparser
+
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+# ---- Local fallback paths ----
+LOCAL_GLOB_PATTERN = "/app1/logs/dc-*/application*"
 FALLBACK_LOG = Path("input") / "sample.log"
 LOG_SEPARATOR = "$$$"
+
+# ---- Remote SFTP config ----
+USE_REMOTE = True  # set False to read only local files
+REMOTE_HOST = config.get('Default', 'Host', fallback='localhost')
+REMOTE_PORT = config.getint('Default', 'remote_port', fallback=22)
+REMOTE_USER = config.get('Default', 'Username', fallback='eventum')
+REMOTE_PASSWORD = config.get('Default', 'Password', fallback='P@ssw0rd')  # or set to password string
+REMOTE_BASE_DIR = config.get('Default', 'remote_path', fallback='/app1/logs')
+REMOTE_SUBDIR_PATTERN = config.get('Default', 'remote_subdir', fallback='dc-snmp')
+REMOTE_FILE_PATTERN = config.get('Default', 'remote_file_pattern', fallback='application*')
 
 app = Flask(__name__)
 
 
-def collect_log_files() -> List[Path]:
-    files = [Path(p) for p in glob(LOG_GLOB_PATTERN) if Path(p).exists()]
+def collect_local_files() -> List[Path]: #local files path >> not sftp
+    files = [Path(p) for p in glob(LOCAL_GLOB_PATTERN) if Path(p).exists()]
     if not files and FALLBACK_LOG.exists():
         files = [FALLBACK_LOG]
     return files
 
 
-def parse_log_block(block: str) -> Optional[Dict[str, str]]:
+def sftp_client():
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(
+        REMOTE_HOST,
+        port=REMOTE_PORT,
+        username=REMOTE_USER,
+        password=REMOTE_PASSWORD,
+        timeout=3,
+        banner_timeout=3,
+        auth_timeout=3,
+    )
+    return client.open_sftp(), client
+
+
+def list_remote_paths(sftp) -> List[str]:
+    """List remote files matching base/subdir/file patterns via SFTP (no shell globbing)."""
+    matches: List[str] = []
+    try:
+        for entry in sftp.listdir_attr(REMOTE_BASE_DIR):
+            if not fnmatch(entry.filename, REMOTE_SUBDIR_PATTERN):
+                continue
+            subdir = f"{REMOTE_BASE_DIR}/{entry.filename}"
+            for file_entry in sftp.listdir_attr(subdir):
+                if fnmatch(file_entry.filename, REMOTE_FILE_PATTERN):
+                    matches.append(f"{subdir}/{file_entry.filename}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Remote listing failed: {exc}")
+    return matches
+
+
+def read_remote_logs() -> List[Dict[str, str]]:
+    print("read_remote_logs(): START")
+    logs: List[Dict[str, str]] = []
+    sftp = client = None
+
+    try:
+        print("Creating SFTP client...")
+        sftp, client = sftp_client()
+        print("SFTP client created.")
+
+        print("Listing remote paths...")
+        remote_paths = list_remote_paths(sftp)  ##list files in the remote path
+        print(f"Found {len(remote_paths)} remote paths: {remote_paths}")
+
+        for remote_path in remote_paths:
+            print(f"Reading remote file: {remote_path}")
+            try:
+                with sftp.file(remote_path, "r") as f:
+                    print(f"Opened remote file: {remote_path}, reading...")
+                    raw_content = f.read().decode("utf-8", errors="replace")
+                    print(f"Read {len(raw_content)} bytes from {remote_path}")
+
+                    print("Parsing blocks...")
+                    parsed = parse_blocks(raw_content,remote_path)
+                    print(f"Parsed {len(parsed)} log entries from {remote_path}")
+
+                    logs.extend(parsed)
+
+            except Exception as exc:
+                print(f"Failed reading {remote_path}: {exc}")
+
+    except Exception as exc:
+        print(f"SFTP connection failed: {exc}")
+
+    finally:
+        print("Closing SFTP and SSH...")
+        if sftp:
+            sftp.close()
+        if client:
+            client.close()
+
+    print(f"read_remote_logs(): DONE, total logs={len(logs)}")
+    return logs
+
+
+def parse_blocks(raw_content: str,remote_path: str) -> List[Dict[str, str]]:
+    parsed: List[Dict[str, str]] = []
+    for block in raw_content.split(LOG_SEPARATOR):
+        entry = parse_log_block(block,remote_path)
+        if entry:
+            parsed.append(entry)
+    return parsed
+
+
+def parse_log_block(block: str, remote_path: str) -> Optional[Dict[str, str]]:
     cleaned = block.strip()
     if not cleaned:
         return None
@@ -36,7 +139,7 @@ def parse_log_block(block: str) -> Optional[Dict[str, str]]:
 
     return {
         "type": log_type,
-        "collector": collector,
+        "collector": collector+" (" + remote_path.split("/")[-1] + ")",
         "level": level,
         "pool": pool,
         "source": source,
@@ -51,7 +154,6 @@ def extract_date_time_and_message(remainder: str) -> Tuple[str, str, str]:
     segments = remainder.strip().split()
     if len(segments) < 2:
         return "", "", remainder.strip()
-
     date, time = segments[0], segments[1]
     message = remainder[remainder.find(time) + len(time):].strip()
     return date, time, message
@@ -66,24 +168,24 @@ def build_datetime(date_value: str, time_value: str) -> Optional[datetime]:
         return None
 
 
-def read_logs_from_file(path: Path) -> List[Dict[str, str]]:
-    if not path.exists():
-        return []
-    raw_content = path.read_text(encoding="utf-8", errors="replace")
-    blocks = raw_content.split(LOG_SEPARATOR)
-    parsed: List[Dict[str, str]] = []
-    for block in blocks:
-        entry = parse_log_block(block)
-        if entry:
-            parsed.append(entry)
-    return parsed
+def read_local_logs_from_files(paths: List[Path]) -> List[Dict[str, str]]:
+    logs: List[Dict[str, str]] = []
+    for path in paths:
+        try:
+            raw_content = path.read_text(encoding="utf-8", errors="replace")
+            logs.extend(parse_blocks(raw_content))
+        except Exception as exc:  # noqa: BLE001
+            print(f"Failed reading {path}: {exc}")
+    return logs
 
 
 def load_all_logs() -> List[Dict[str, str]]:
-    logs: List[Dict[str, str]] = []
-    for log_file in collect_log_files():
-        logs.extend(read_logs_from_file(log_file))
-    return logs
+    if USE_REMOTE:
+        logs = read_remote_logs()
+        if logs:
+            return logs
+        print("Remote fetch empty/failed, falling back to local.")
+    return read_local_logs_from_files(collect_local_files())
 
 
 def apply_filters(logs: List[Dict[str, str]], args) -> List[Dict[str, str]]:
@@ -161,8 +263,11 @@ def api_logs():
     logs = apply_sort(logs, request.args.get("sort_by", "datetime"), request.args.get("direction", "desc"))
     return jsonify({"count": len(logs), "logs": logs})
 
+@app.route("/test")
+def test_route():
+    return str(read_remote_logs()), 200
 
 if __name__ == "__main__":
-    print("Scanning logs:", collect_log_files())
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
+    print("Remote enabled" if USE_REMOTE else "Using local logs")
+    print("Local matches:", collect_local_files())
+    app.run(host="0.0.0.0", port=5000, debug=False)
