@@ -127,12 +127,22 @@ def parse_log_block(block: str, remote_path: str) -> Optional[Dict[str, str]]:
     if not cleaned:
         return None
 
-    parts = [segment.replace("[", "").strip() for segment in cleaned.split("]") if segment.strip()]
-    if len(parts) < 6:
+    fields = []
+    remainder = cleaned
+
+    for _ in range(5):
+        start = remainder.find("[")
+        end = remainder.find("]")
+        if start == -1 or end == -1 or end < start:
+            return None
+
+        fields.append(remainder[start+1:end].strip())
+        remainder = remainder[end+1:].strip()
+
+    if len(fields) != 5:
         return None
 
-    log_type, collector, level, pool, source = parts[:5]
-    remainder = parts[5]
+    log_type, collector, level, pool, source = fields
 
     date, time, message = extract_date_time_and_message(remainder)
     dt = build_datetime(date, time)
