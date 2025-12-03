@@ -21,8 +21,8 @@ LOG_SEPARATOR = "$$$"
 USE_REMOTE = True  # set False to read only local files
 REMOTE_HOST = config.get('Default', 'Host', fallback='localhost')
 REMOTE_PORT = config.getint('Default', 'remote_port', fallback=22)
-REMOTE_USER = config.get('Default', 'Username', fallback='eventum')
-REMOTE_PASSWORD = config.get('Default', 'Password', fallback='P@ssw0rd')  # or set to password string
+REMOTE_USER = config.get('Default', 'Username')
+REMOTE_PASSWORD = config.get('Default', 'Password')  # or set to password string
 REMOTE_BASE_DIR = config.get('Default', 'remote_path', fallback='/app1/logs')
 REMOTE_SUBDIR_PATTERN = config.get('Default', 'remote_subdir', fallback='dc-snmp')
 REMOTE_FILE_PATTERN = config.get('Default', 'remote_file_pattern', fallback='application*')
