@@ -13,7 +13,7 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 
 # ---- Local fallback paths ----
-LOCAL_GLOB_PATTERN = "/app1/logs/dc-*/application*"
+
 FALLBACK_LOG = Path("input") / "sample.log"
 LOG_SEPARATOR = "$$$"
 
@@ -27,6 +27,9 @@ REMOTE_BASE_DIR = config.get('Default', 'remote_path', fallback='/app1/logs')
 REMOTE_SUBDIR_PATTERN = config.get('Default', 'remote_subdir', fallback='dc-snmp')
 REMOTE_FILE_PATTERN = config.get('Default', 'remote_file_pattern', fallback='application*')
 
+LOCAL_SYNC_DIR = Path(config.get('Default', 'local_sync_dir', fallback='synced_logs'))
+
+LOCAL_GLOB_PATTERN = str(LOCAL_SYNC_DIR / "dc-*" / "application*")
 app = Flask(__name__)
 
 
@@ -53,19 +56,80 @@ def sftp_client():
 
 
 def list_remote_paths(sftp) -> List[str]:
-    """List remote files matching base/subdir/file patterns via SFTP (no shell globbing)."""
-    matches: List[str] = []
+    """Return remote files with full metadata: name, path, size, mtime."""
+    results = []
     try:
         for entry in sftp.listdir_attr(REMOTE_BASE_DIR):
             if not fnmatch(entry.filename, REMOTE_SUBDIR_PATTERN):
                 continue
             subdir = f"{REMOTE_BASE_DIR}/{entry.filename}"
-            for file_entry in sftp.listdir_attr(subdir):
-                if fnmatch(file_entry.filename, REMOTE_FILE_PATTERN):
-                    matches.append(f"{subdir}/{file_entry.filename}")
-    except Exception as exc:  # noqa: BLE001
+            for f in sftp.listdir_attr(subdir):
+                if fnmatch(f.filename, REMOTE_FILE_PATTERN):
+                    results.append({
+                        "remote_path": f"{subdir}/{f.filename}",
+                        "filename": f"{entry.filename}/{f.filename}",
+                        "size": f.st_size,
+                        "mtime": f.st_mtime,
+                    })
+    except Exception as exc:
         print(f"Remote listing failed: {exc}")
-    return matches
+    return results
+
+def local_file_metadata(local_path: Path) -> Optional[Dict]:
+    if not local_path.exists():
+        return None
+    return {
+        "size": local_path.stat().st_size,
+        "mtime": int(local_path.stat().st_mtime),
+    }
+
+def sync_remote_to_local() -> List[Path]:
+    print("=== SYNC START ===")
+    downloaded_files = []
+    sftp = client = None
+
+    try:
+        sftp, client = sftp_client()
+        print("Connected to SFTP.")
+
+        remote_files = list_remote_paths(sftp)
+        print(f"Found {len(remote_files)} remote files.")
+
+        for rf in remote_files:
+            rel_path = Path(rf["filename"])
+            local_path = LOCAL_SYNC_DIR / rel_path
+
+            # Ensure subdirectory exists
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Check local metadata
+            local_meta = local_file_metadata(local_path)
+
+            # Download condition:
+            # - File does NOT exist locally
+            # - OR size differs
+            # - OR remote mtime newer
+            if (local_meta is None or 
+                local_meta["size"] != rf["size"] or 
+                rf["mtime"] > local_meta["mtime"]):
+
+                print(f"Downloading {rf['remote_path']} → {local_path}")
+                with sftp.file(rf["remote_path"], "r") as remote_f, open(local_path, "wb") as local_f:
+                    local_f.write(remote_f.read())
+                
+                downloaded_files.append(local_path)
+            else:
+                print(f"Skipping unchanged file: {local_path}")
+
+    except Exception as exc:
+        print(f"SYNC ERROR: {exc}")
+
+    finally:
+        if sftp: sftp.close()
+        if client: client.close()
+
+    print(f"=== SYNC DONE: {len(downloaded_files)} files updated ===")
+    return downloaded_files
 
 
 def read_remote_logs() -> List[Dict[str, str]]:
@@ -138,7 +202,6 @@ def parse_log_block(block: str, remote_path: str) -> Optional[Dict[str, str]]:
 
         fields.append(remainder[start+1:end].strip())
         remainder = remainder[end+1:].strip()
-
     if len(fields) != 5:
         return None
 
@@ -183,18 +246,13 @@ def read_local_logs_from_files(paths: List[Path]) -> List[Dict[str, str]]:
     for path in paths:
         try:
             raw_content = path.read_text(encoding="utf-8", errors="replace")
-            logs.extend(parse_blocks(raw_content))
+            logs.extend(parse_blocks(raw_content,str(path)))
         except Exception as exc:  # noqa: BLE001
             print(f"Failed reading {path}: {exc}")
     return logs
 
 
 def load_all_logs() -> List[Dict[str, str]]:
-    if USE_REMOTE:
-        logs = read_remote_logs()
-        if logs:
-            return logs
-        print("Remote fetch empty/failed, falling back to local.")
     return read_local_logs_from_files(collect_local_files())
 
 
@@ -265,6 +323,10 @@ def index():
     logs = load_all_logs()
     return render_template("index.html", logs=logs)
 
+@app.route("/sync")
+def sync_route():
+    updated = sync_remote_to_local()
+    return jsonify({"updated": len(updated)})
 
 @app.route("/api/logs")
 def api_logs():

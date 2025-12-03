@@ -287,8 +287,8 @@
   <div class="page">
     <div class="hero">
       <div>
-        <h1 class="title">Network Log Console</h1>
-        <p class="subtitle">Filter, search, and sort collector activity in real time.</p>
+        <h1 class="title">UPM Log Console</h1>
+        <p class="subtitle">Filter, search, and sort collector logs</p>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
         <button id="theme-toggle" class="ghost" type="button">Toggle theme</button>
@@ -354,6 +354,8 @@
           </div>
         </div>
         <div class="actions">
+          <button id="syncBtn">Sync Logs</button>
+	  <span id="syncStatus" style="margin-left: 10px;"></span>
           <button type="button" class="ghost" id="reset-filters">Reset</button>
           <button type="submit" class="primary" id="apply-filters">Apply</button>
         </div>
@@ -465,7 +467,7 @@
         }
       });
     }
-
+    
     function populateFilters(logs) {
       populateSelect(els.controls.type, uniqueValues(logs, 'type'));
       populateSelect(els.controls.collector, uniqueValues(logs, 'collector'));
@@ -599,6 +601,25 @@
       e.preventDefault();
       resetFilters();
     });
+
+    document.getElementById("syncBtn").addEventListener("click", function () {
+      const status = document.getElementById("syncStatus");
+      status.textContent = "Syncing… please wait";
+
+      fetch("/sync")
+          .then(response => response.json())
+          .then(data => {
+              status.textContent = `Sync complete. Updated ${data.updated} file(s).`;
+              // Optionally reload page after sync
+              setTimeout(() => {
+                  window.location.reload();
+              }, 1000);
+          })
+          .catch(err => {
+              status.textContent = "Sync failed!";
+              console.error(err);
+          });
+      });
 
     els.columnToggles.addEventListener('change', (e) => {
       if (e.target && e.target.dataset.col) {
