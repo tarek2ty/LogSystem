@@ -9,6 +9,8 @@ import paramiko
 
 import configparser
 
+from database import initialize_db, insert_log_entry
+
 config = configparser.ConfigParser()
 config.read('config.ini')
 
@@ -21,8 +23,8 @@ LOG_SEPARATOR = "$$$"
 USE_REMOTE = True  # set False to read only local files
 REMOTE_HOST = config.get('Default', 'Host', fallback='localhost')
 REMOTE_PORT = config.getint('Default', 'remote_port', fallback=22)
-REMOTE_USER = config.get('Default', 'Username')
-REMOTE_PASSWORD = config.get('Default', 'Password')  # or set to password string
+REMOTE_USER = config.get('Default', 'Username', fallback='eventum')
+REMOTE_PASSWORD = config.get('Default', 'Password', fallback='P@ssw0rd')  # or set to password string
 REMOTE_BASE_DIR = config.get('Default', 'remote_path', fallback='/app1/logs')
 REMOTE_SUBDIR_PATTERN = config.get('Default', 'remote_subdir', fallback='dc-snmp')
 REMOTE_FILE_PATTERN = config.get('Default', 'remote_file_pattern', fallback='application*')
@@ -134,7 +136,7 @@ def sync_remote_to_local() -> List[Path]:
 
 def read_remote_logs() -> List[Dict[str, str]]:
     print("read_remote_logs(): START")
-    logs: List[Dict[str, str]] = []
+    #logs: List[Dict[str, str]] = []
     sftp = client = None
 
     try:
@@ -155,10 +157,10 @@ def read_remote_logs() -> List[Dict[str, str]]:
                     print(f"Read {len(raw_content)} bytes from {remote_path}")
 
                     print("Parsing blocks...")
-                    parsed = parse_blocks(raw_content,remote_path)
-                    print(f"Parsed {len(parsed)} log entries from {remote_path}")
+                    parse_blocks(raw_content,remote_path)   #parse and insert into db
+                    #print(f"Parsed {len(parsed)} log entries from {remote_path}")
 
-                    logs.extend(parsed)
+                    #logs.extend(parsed)
 
             except Exception as exc:
                 print(f"Failed reading {remote_path}: {exc}")
@@ -173,8 +175,8 @@ def read_remote_logs() -> List[Dict[str, str]]:
         if client:
             client.close()
 
-    print(f"read_remote_logs(): DONE, total logs={len(logs)}")
-    return logs
+    print(f"read_remote_logs(): DONE")
+    #return logs
 
 
 def parse_blocks(raw_content: str,remote_path: str) -> List[Dict[str, str]]:
@@ -182,8 +184,9 @@ def parse_blocks(raw_content: str,remote_path: str) -> List[Dict[str, str]]:
     for block in raw_content.split(LOG_SEPARATOR):
         entry = parse_log_block(block,remote_path)
         if entry:
-            parsed.append(entry)
-    return parsed
+            insert_log_entry(entry)
+            #parsed.append(entry)
+    #return parsed
 
 
 def parse_log_block(block: str, remote_path: str) -> Optional[Dict[str, str]]:
@@ -210,9 +213,10 @@ def parse_log_block(block: str, remote_path: str) -> Optional[Dict[str, str]]:
     date, time, message = extract_date_time_and_message(remainder)
     dt = build_datetime(date, time)
 
+    filename = remote_path.split("/")[-1]
     return {
         "type": log_type,
-        "collector": collector+" (" + remote_path.split("/")[-1] + ")",
+        "collector": collector+" (" + filename + ")",
         "level": level,
         "pool": pool,
         "source": source,
@@ -220,6 +224,7 @@ def parse_log_block(block: str, remote_path: str) -> Optional[Dict[str, str]]:
         "time": time,
         "message": message,
         "datetime": dt.isoformat() if dt else None,
+        "filename": filename,
     }
 
 
@@ -246,14 +251,14 @@ def read_local_logs_from_files(paths: List[Path]) -> List[Dict[str, str]]:
     for path in paths:
         try:
             raw_content = path.read_text(encoding="utf-8", errors="replace")
-            logs.extend(parse_blocks(raw_content,str(path)))
-        except Exception as exc:  # noqa: BLE001
+            parse_blocks(raw_content, str(path))
+        except Exception as exc:  
             print(f"Failed reading {path}: {exc}")
-    return logs
+    #return logs
 
 
 def load_all_logs() -> List[Dict[str, str]]:
-    return read_local_logs_from_files(collect_local_files())
+    return []  # Placeholder for loading logs from DB if needed
 
 
 def apply_filters(logs: List[Dict[str, str]], args) -> List[Dict[str, str]]:
@@ -340,6 +345,8 @@ def test_route():
     return str(read_remote_logs()), 200
 
 if __name__ == "__main__":
+    print("init database")
+    initialize_db()
     print("Remote enabled" if USE_REMOTE else "Using local logs")
     print("Local matches:", collect_local_files())
     app.run(host="0.0.0.0", port=5000, debug=False)

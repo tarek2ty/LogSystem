@@ -36,3 +36,26 @@ def initialize_db():
 
     conn.commit()
     conn.close()
+
+def insert_log_entry(log_entry):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    ##insert or ignore to avoid duplicates
+    cursor.execute('''
+        INSERT OR IGNORE INTO logs 
+        (type, collector, level, pool, source, date, time, datetime, filename, message)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        log_entry['type'],
+        log_entry['collector'],
+        log_entry['level'],
+        log_entry.get('pool'),
+        log_entry.get('source'),
+        log_entry['date'],
+        log_entry['time'],
+        log_entry['datetime'],
+        log_entry['filename'],
+        log_entry['message']
+    ))
+    conn.commit()
+    conn.close()
