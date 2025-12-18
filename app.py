@@ -149,51 +149,6 @@ def sync_remote_to_local() -> List[Path]:
     print(f"=== SYNC DONE: {len(downloaded_files)} files downloaded ===")
     return downloaded_files
 
-def read_remote_logs() -> List[Dict[str, str]]:
-    print("read_remote_logs(): START")
-    #logs: List[Dict[str, str]] = []
-    sftp = client = None
-
-    try:
-        print("Creating SFTP client...")
-        sftp, client = sftp_client()
-        print("SFTP client created.")
-
-        print("Listing remote paths...")
-        remote_paths = list_remote_paths(sftp)  ##list files in the remote path
-        print(f"Found {len(remote_paths)} remote paths: {remote_paths}")
-
-        for remote_path in remote_paths:
-            print(f"Reading remote file: {remote_path}")
-            try:
-                with sftp.file(remote_path, "r") as f:
-                    print(f"Opened remote file: {remote_path}, reading...")
-                    raw_content = f.read().decode("utf-8", errors="replace")
-                    print(f"Read {len(raw_content)} bytes from {remote_path}")
-
-                    print("Parsing blocks...")
-                    parse_blocks(raw_content,remote_path)   #parse and insert into db
-                    #print(f"Parsed {len(parsed)} log entries from {remote_path}")
-
-                    #logs.extend(parsed)
-
-            except Exception as exc:
-                print(f"Failed reading {remote_path}: {exc}")
-
-    except Exception as exc:
-        print(f"SFTP connection failed: {exc}")
-
-    finally:
-        print("Closing SFTP and SSH...")
-        if sftp:
-            sftp.close()
-        if client:
-            client.close()
-
-    print(f"read_remote_logs(): DONE")
-    #return logs
-
-
 def parse_blocks(raw_content: str,remote_path: str) -> List[Dict[str, str]]:
     parsed = []
     for block in raw_content.split(LOG_SEPARATOR):
@@ -264,17 +219,6 @@ def build_datetime(date_value: str, time_value: str) -> Optional[datetime]:
         return datetime.fromisoformat(f"{date_value} {time_value}")
     except ValueError:
         return None
-
-
-def read_local_logs_from_files(paths: List[Path]) -> List[Dict[str, str]]:
-    logs: List[Dict[str, str]] = []
-    for path in paths:
-        try:
-            raw_content = path.read_text(encoding="utf-8", errors="replace")
-            parse_blocks(raw_content, str(path))
-        except Exception as exc:  
-            print(f"Failed reading {path}: {exc}")
-    #return logs
 
 
 def load_all_logs() -> List[Dict[str, str]]:
