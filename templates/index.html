@@ -474,7 +474,6 @@
       populateSelect(els.controls.level, uniqueValues(logs, 'level'));
       populateSelect(els.controls.pool, uniqueValues(logs, 'pool'));
       populateSelect(els.controls.source, uniqueValues(logs, 'source'));
-      els.logCount.textContent = logs.length;
     }
 
     function buildQuery() {
@@ -489,19 +488,23 @@
     }
 
     async function refresh() {
-      try {
+	try {
         const res = await fetch(`/api/logs?${buildQuery()}`);
         const data = await res.json();
+
         state.lastLogs = data.logs || [];
-        els.matchCount.textContent = data.count ?? state.lastLogs.length;
+
+        els.logCount.textContent = data.count;
+        els.matchCount.textContent = data.count;
+
+        populateFilters(state.lastLogs);
+
         renderTable(state.lastLogs);
-      } catch (err) {
-        console.error('Failed to load logs, using cached data', err);
-        state.lastLogs = baseLogs;
-        els.matchCount.textContent = baseLogs.length;
-        renderTable(state.lastLogs);
-      }
+
+    } catch (err) {
+        console.error("Failed to load logs", err);
     }
+}
 
     function paginate(logs) {
       const perPage = Number(els.pagination.perPage.value) || state.perPage;
@@ -670,8 +673,6 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       initTheme();
-      populateFilters(baseLogs);
-      state.lastLogs = baseLogs;
       renderTable(state.lastLogs);
       refresh();
     });

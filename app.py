@@ -9,7 +9,7 @@ import paramiko
 
 import configparser
 
-from database import initialize_db, insert_log_entry
+from database import initialize_db, insert_log_entry, query_logs, sqlite_is_empty, should_ingest_file, mark_file_ingested
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -100,39 +100,54 @@ def sync_remote_to_local() -> List[Path]:
         for rf in remote_files:
             rel_path = Path(rf["filename"])
             local_path = LOCAL_SYNC_DIR / rel_path
-
-            # Ensure subdirectory exists
             local_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Check local metadata
             local_meta = local_file_metadata(local_path)
 
-            # Download condition:
-            # - File does NOT exist locally
-            # - OR size differs
-            # - OR remote mtime newer
-            if (local_meta is None or 
-                local_meta["size"] != rf["size"] or 
-                rf["mtime"] > local_meta["mtime"]):
+            needs_download = (
+                local_meta is None or
+                local_meta["size"] != rf["size"] or
+                rf["mtime"] > local_meta["mtime"]
+            )
 
+            if needs_download:
                 print(f"Downloading {rf['remote_path']} → {local_path}")
-                with sftp.file(rf["remote_path"], "r") as remote_f, open(local_path, "wb") as local_f:
-                    local_f.write(remote_f.read())
-                
+                with sftp.file(rf["remote_path"], "r") as remote_f:
+                    content = remote_f.read().decode("utf-8", errors="replace")
+
+                local_path.write_text(content, encoding="utf-8")
                 downloaded_files.append(local_path)
+
             else:
                 print(f"Skipping unchanged file: {local_path}")
+                content = None  # IMPORTANT
+
+            # ---------- INGESTION DECISION ----------
+            stat = local_path.stat()
+            file_key = str(local_path.resolve())
+
+            if should_ingest_file(file_key, stat.st_size, int(stat.st_mtime)):
+                print(f"Ingesting {local_path}")
+                if content is None:
+                    content = local_path.read_text(encoding="utf-8", errors="replace")
+
+                entries = parse_blocks(content, file_key)
+                ingest_entries(entries)
+                mark_file_ingested(file_key, stat.st_size, int(stat.st_mtime))
+            else:
+                print(f"Already ingested, skipping parse: {local_path}")
 
     except Exception as exc:
         print(f"SYNC ERROR: {exc}")
 
     finally:
-        if sftp: sftp.close()
-        if client: client.close()
+        if sftp:
+            sftp.close()
+        if client:
+            client.close()
 
-    print(f"=== SYNC DONE: {len(downloaded_files)} files updated ===")
+    print(f"=== SYNC DONE: {len(downloaded_files)} files downloaded ===")
     return downloaded_files
-
 
 def read_remote_logs() -> List[Dict[str, str]]:
     print("read_remote_logs(): START")
@@ -180,13 +195,18 @@ def read_remote_logs() -> List[Dict[str, str]]:
 
 
 def parse_blocks(raw_content: str,remote_path: str) -> List[Dict[str, str]]:
-    parsed: List[Dict[str, str]] = []
+    parsed = []
     for block in raw_content.split(LOG_SEPARATOR):
         entry = parse_log_block(block,remote_path)
         if entry:
-            insert_log_entry(entry)
+            parsed.append(entry)
+            #insert_log_entry(entry)
             #parsed.append(entry)
-    #return parsed
+    return parsed
+
+def ingest_entries(entries: list[dict]):
+    for entry in entries:
+        insert_log_entry(entry)
 
 
 def parse_log_block(block: str, remote_path: str) -> Optional[Dict[str, str]]:
@@ -258,7 +278,7 @@ def read_local_logs_from_files(paths: List[Path]) -> List[Dict[str, str]]:
 
 
 def load_all_logs() -> List[Dict[str, str]]:
-    return []  # Placeholder for loading logs from DB if needed
+    raise RuntimeError("Depricated")  # Placeholder for loading logs from DB if needed
 
 
 def apply_filters(logs: List[Dict[str, str]], args) -> List[Dict[str, str]]:
@@ -325,24 +345,109 @@ def apply_sort(logs: List[Dict[str, str]], sort_by: str, direction: str) -> List
 
 @app.route("/")
 def index():
-    logs = load_all_logs()
-    return render_template("index.html", logs=logs)
+    ##logs = load_all_logs()
+    return render_template("index.html", logs=[])
 
 @app.route("/sync")
 def sync_route():
+
     updated = sync_remote_to_local()
     return jsonify({"updated": len(updated)})
 
+@app.route("/ingest/local", methods=["POST"])
+def ingest_local():
+    indexed = 0
+    skipped = 0
+    # if we put a file manually in the synced logs dir, this will fetch it in the DB
+    files = list(LOCAL_SYNC_DIR.rglob("*.log"))
+
+    for path in LOCAL_SYNC_DIR.rglob("*.log"):
+        stat = path.stat()
+        file_key = str(path.resolve())
+
+        if not should_ingest_file(file_key, stat.st_size, int(stat.st_mtime)):
+            skipped += 1
+            print(f"skipped {file_key} already exists")
+            continue
+
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace")
+            print("Parsing file: ", file_key)
+            entries = parse_blocks(raw,file_key)  ##put in db
+            ingest_entries(entries)
+            mark_file_ingested(file_key, stat.st_size, int(stat.st_mtime))
+            indexed += 1
+        except Exception as exc:
+            print(f"Failed to ingest file: {file}: {exec}")
+    return jsonify({"indexed_files":indexed, "skipped": skipped})
+
 @app.route("/api/logs")
 def api_logs():
-    logs = load_all_logs()
-    logs = apply_filters(logs, request.args)
-    logs = apply_sort(logs, request.args.get("sort_by", "datetime"), request.args.get("direction", "desc"))
-    return jsonify({"count": len(logs), "logs": logs})
+        # Pagination
+    page = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 200))
+    offset = (page - 1) * limit
 
-@app.route("/test")
-def test_route():
-    return str(read_remote_logs()), 200
+    # Filters
+    search = request.args.get("search")
+    type_f = request.args.get("type")
+    collector_f = request.args.get("collector")
+    level_f = request.args.get("level")
+    pool_f = request.args.get("pool")
+    source_f = request.args.get("source")
+
+    # Date/time
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    start_time = request.args.get("start_time")
+    end_time = request.args.get("end_time")
+
+    start_dt = None
+    end_dt = None
+
+    try:
+        if start_date and start_time:
+            start_dt = int(datetime.fromisoformat(f"{start_date} {start_time}").timestamp())
+        elif start_date:
+            start_dt = int(datetime.fromisoformat(f"{start_date} 00:00").timestamp())
+
+        if end_date and end_time:
+            end_dt = int(datetime.fromisoformat(f"{end_date} {end_time}").timestamp())
+        elif end_date:
+            end_dt = int(datetime.fromisoformat(f"{end_date} 23:59").timestamp())
+    except:
+        pass
+
+    # Sorting
+    sort_by = request.args.get("sort_by", "datetime")
+    direction = request.args.get("direction", "desc")
+
+    rows, total = query_logs(
+        search=search,
+        type_filter=type_f,
+        collector_filter=collector_f,
+        level_filter=level_f,
+        pool_filter=pool_f,
+        source_filter=source_f,
+        start_date=start_dt,
+        end_date=end_dt,
+        sort_by=sort_by,
+        direction=direction,
+        limit=limit,
+        offset=offset,
+    )
+
+    return jsonify({
+        "page": page,
+        "limit": limit,
+        "returned": len(rows),
+        "total": total,
+        "logs": rows
+    })
+
+#@app.route("/test")
+#def test_route():
+#    return str(read_remote_logs()), 200
 
 if __name__ == "__main__":
     print("init database")
